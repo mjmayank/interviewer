@@ -206,6 +206,23 @@ export default function Home() {
     startInterview();
   };
 
+  const handleSkipQuestion = async () => {
+    if (isLoading) return;
+
+    const skipMessage = 'Next question';
+
+    // Add user message to display immediately
+    const newMessage = { role: 'user', content: skipMessage };
+    setMessages([...messages, newMessage]);
+    setPendingMessages([...pendingMessages, newMessage]);
+
+    // Process the message immediately (no debounce for skip button)
+    const allMessages = [...messages, newMessage];
+    processMessages(allMessages);
+    setPendingMessages([]);
+    setIsTyping(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
@@ -235,7 +252,7 @@ export default function Home() {
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}
                 >
                   <div
                     className={`max-w-[80%] rounded-lg p-4 ${
@@ -246,6 +263,15 @@ export default function Home() {
                   >
                     <p className="whitespace-pre-wrap">{message.content}</p>
                   </div>
+                  {message.role === 'assistant' && !interviewComplete && (
+                    <button
+                      onClick={handleSkipQuestion}
+                      disabled={isLoading}
+                      className="mt-1 text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Skip question
+                    </button>
+                  )}
                 </div>
               ))}
 
