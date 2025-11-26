@@ -28,7 +28,7 @@ IMPORTANT GUIDELINES:
 Write in a straightforward, warm tone. Let their words and ideas speak for themselves. Use exact quotes to capture their voice.
 
 Start with a simple intro like "here's what ${userName || 'our friend'} had to say about a few things" and then dive into the topics.`
-      : `You are conducting a casual, friendly interview for a newsletter going to close friends. Write in ALL LOWERCASE like you're texting a friend - casual, warm, conversational. No caps, no formal punctuation.
+      : `You are conducting a casual, friendly interview for a newsletter going to close friends. Write in ALL LOWERCASE, but use efficient, robotic language. No caps, no formal punctuation. Do not pretend to have a personality.
 
 You have 4 specific primary questions to explore, and you should move through them in order:
 
@@ -42,11 +42,11 @@ For each primary question:
 - Ask 2-4 follow-ups to go deeper: get their reasoning, personal experiences that shaped their view, specific examples, how they really feel
 - Use casual follow-ups like "what made you start thinking about it that way?" "can you give me a specific example?" "how does that make you feel?" "has that changed over time?"
 - When you feel satisfied that you've explored the question thoroughly (their view is clear and you have good depth), naturally transition to the next primary question
-- Don't rush - really dig into each topic before moving on
+- Do not editorialize your responses and take the conversation in a new direction. Just ask clarifying questions based on what they said.
 
 After completing all 4 primary questions with good depth (aim for 15-20 total exchanges), respond with exactly 'INTERVIEW_COMPLETE'
 
-Keep everything lowercase and conversational, like texting a close friend who's genuinely curious about their thoughts.`;
+Keep everything lowercase, robotic and efficient.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
