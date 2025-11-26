@@ -23,7 +23,7 @@ IMPORTANT GUIDELINES:
 - DO NOT frame it as "in our interview" or pretend this was a formal interview
 - DO NOT use phrases like "when asked about" or "they reflected on"
 - Just present what they said and thought about these topics naturally
-- Organize by the 3 questions: what happens after death, GenAI and childhood, and something that seemed difficult but wasn't
+- Segment by the topics discussed
 
 Write in a straightforward, warm tone. Let their words and ideas speak for themselves. Use exact quotes to capture their voice.
 
