@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Copy, RefreshCw } from 'lucide-react';
+import { Send, Copy, RefreshCw, Mail } from 'lucide-react';
 
 export default function Home() {
   const [userName, setUserName] = useState('');
@@ -15,6 +15,7 @@ export default function Home() {
   const [debounceTimer, setDebounceTimer] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const messagesRef = useRef([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -273,6 +274,24 @@ export default function Home() {
     startInterview();
   };
 
+  const handleSendEmail = async () => {
+    if (isSendingEmail) return;
+
+    setIsSendingEmail(true);
+
+    const conversationHistory = messages;
+
+    // Check if article is an error message
+    if (article && (article.startsWith('API Error') || article.startsWith('Error:'))) {
+      await sendEmail(conversationHistory, null, article);
+    } else {
+      // Success case - send with summary
+      await sendEmail(conversationHistory, article || null, null);
+    }
+
+    setIsSendingEmail(false);
+  };
+
   const handleSkipQuestion = async () => {
     if (isLoading) return;
 
@@ -426,6 +445,14 @@ export default function Home() {
                   >
                     <Copy size={20} />
                     <span>{isCopied ? 'Copied!' : 'Copy Article'}</span>
+                  </button>
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={isSendingEmail}
+                    className="flex items-center space-x-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Mail size={20} />
+                    <span>{isSendingEmail ? 'Sending...' : 'Send Email'}</span>
                   </button>
                   <button
                     onClick={handleStartOver}

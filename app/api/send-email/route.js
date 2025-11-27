@@ -31,6 +31,13 @@ export async function POST(request) {
 
     sgMail.setApiKey(sendGridApiKey);
 
+    // Log email configuration (without sensitive data)
+    console.log('SendGrid Configuration:');
+    console.log('- From Email:', fromEmail);
+    console.log('- To Email:', email);
+    console.log('- API Key configured:', !!sendGridApiKey);
+    console.log('- API Key length:', sendGridApiKey?.length || 0);
+
     // Format conversation history
     const conversationText = conversationHistory
       .map((msg) => {
@@ -96,14 +103,46 @@ export async function POST(request) {
       html: htmlContent,
     };
 
-    await sgMail.send(msg);
+    // Log message details (without full content)
+    console.log('Sending email with SendGrid:');
+    console.log('- To:', msg.to);
+    console.log('- From:', msg.from);
+    console.log('- Subject:', msg.subject);
+    console.log('- Text length:', msg.text?.length || 0);
+    console.log('- HTML length:', msg.html?.length || 0);
+
+    const response = await sgMail.send(msg);
+
+    // Log successful response
+    console.log('SendGrid response:', JSON.stringify(response, null, 2));
 
     return NextResponse.json({ success: true, message: 'Email sent successfully' });
   } catch (error) {
-    console.error('Error sending email:', error);
+    // Log full error object
+    console.error('Error sending email - full error:', JSON.stringify(error, null, 2));
+
+    // Log response if available
+    if (error.response) {
+      console.error('SendGrid response status:', error.response.statusCode);
+      console.error('SendGrid response headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('SendGrid response body:', JSON.stringify(error.response.body, null, 2));
+
+      // Log body errors specifically
+      if (error.response.body && error.response.body.errors) {
+        console.error('SendGrid body errors:', JSON.stringify(error.response.body.errors, null, 2));
+      }
+    }
+
+    // Extract error message from body if available
+    let errorMessage = error.message || 'Failed to send email';
+    if (error.response && error.response.body && error.response.body.errors) {
+      const bodyErrors = error.response.body.errors.map(err => err.message || err).join('; ');
+      errorMessage = `SendGrid Error: ${bodyErrors}`;
+    }
+
     return NextResponse.json(
-      { error: error.message || 'Failed to send email' },
-      { status: 500 }
+      { error: errorMessage },
+      { status: error.response?.statusCode || 500 }
     );
   }
 }
