@@ -14,9 +14,12 @@ export default function Home() {
   const [pendingMessages, setPendingMessages] = useState([]);
   const [debounceTimer, setDebounceTimer] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const messagesRef = useRef([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  const DEVELOPER_EMAIL = 'mjmayank@gmail.com';
 
   // Keep messagesRef in sync with messages state
   useEffect(() => {
@@ -99,6 +102,34 @@ export default function Home() {
     }
   };
 
+  const sendEmail = async (conversationHistory, summary, error) => {
+    try {
+      const response = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: DEVELOPER_EMAIL,
+          conversationHistory,
+          summary,
+          error,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to send email:', errorData);
+        return;
+      }
+
+      setEmailSent(true);
+      console.log('Email sent successfully');
+    } catch (error) {
+      console.error('Error sending email:', error);
+    }
+  };
+
   const startInterview = async () => {
     setIsLoading(true);
     const initialMessage = await callClaude([
@@ -126,8 +157,24 @@ export default function Home() {
         },
       ];
 
-      const generatedArticle = await callClaude(articlePrompt, true);
-      setArticle(generatedArticle);
+      try {
+        const generatedArticle = await callClaude(articlePrompt, true);
+
+        // Check if the response is an error
+        if (generatedArticle.startsWith('API Error') || generatedArticle.startsWith('Error:')) {
+          // Error generating summary - send email with error
+          await sendEmail(conversationWithoutTrigger, null, generatedArticle);
+        } else {
+          // Success - send email with summary
+          setArticle(generatedArticle);
+          await sendEmail(conversationWithoutTrigger, generatedArticle, null);
+        }
+      } catch (error) {
+        // Error generating summary - send email with error
+        const errorMessage = `Error: ${error.message}`;
+        await sendEmail(conversationWithoutTrigger, null, errorMessage);
+      }
+
       setIsLoading(false);
       return;
     }
@@ -149,8 +196,27 @@ export default function Home() {
         },
       ];
 
-      const generatedArticle = await callClaude(articlePrompt, true);
-      setArticle(generatedArticle);
+      try {
+        const generatedArticle = await callClaude(articlePrompt, true);
+
+        // Check if the response is an error
+        if (generatedArticle.startsWith('API Error') || generatedArticle.startsWith('Error:')) {
+          // Error generating summary - send email with error
+          const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
+          await sendEmail(fullConversation, null, generatedArticle);
+        } else {
+          // Success - send email with summary
+          setArticle(generatedArticle);
+          const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
+          await sendEmail(fullConversation, generatedArticle, null);
+        }
+      } catch (error) {
+        // Error generating summary - send email with error
+        const errorMessage = `Error: ${error.message}`;
+        const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
+        await sendEmail(fullConversation, null, errorMessage);
+      }
+
       setIsLoading(false);
     } else {
       // Continue the interview
@@ -203,6 +269,7 @@ export default function Home() {
     setInterviewComplete(false);
     setArticle('');
     setIsCopied(false);
+    setEmailSent(false);
     startInterview();
   };
 
@@ -340,6 +407,12 @@ export default function Home() {
               </div>
             ) : (
               <>
+                {emailSent && (
+                  <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+                    ✓ Email sent successfully
+                  </div>
+                )}
+
                 <div className="prose prose-lg max-w-none mb-6">
                   <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
                     {article}
