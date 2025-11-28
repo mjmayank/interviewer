@@ -3,7 +3,7 @@ import sgMail from '@sendgrid/mail';
 
 export async function POST(request) {
   try {
-    const { email, conversationHistory, summary, error } = await request.json();
+    const { email, conversationHistory, summary, error, userEditedSummaries = {}, primaryQuestions = [] } = await request.json();
 
     const sendGridApiKey = process.env.SENDGRID_API_KEY;
     const fromEmail = process.env.SENDGRID_FROM_EMAIL;
@@ -46,17 +46,50 @@ export async function POST(request) {
       })
       .join('\n\n');
 
+    // Format user-edited summaries
+    const formatUserSummaries = (summaries, questions) => {
+      if (!summaries || Object.keys(summaries).length === 0) {
+        return null;
+      }
+      return questions
+        .map((question, index) => {
+          const userSummary = summaries[index];
+          if (!userSummary) return null;
+          return `${question}\n\n${userSummary}`;
+        })
+        .filter(Boolean)
+        .join('\n\n---\n\n');
+    };
+
+    const userSummariesText = formatUserSummaries(userEditedSummaries, primaryQuestions);
+
     // Create email content
     let subject, htmlContent, textContent;
 
     if (error) {
       // Error case: send conversation history and error message
       subject = 'Interview Summary - Error Generating Summary';
+
+      // Build HTML content with user summaries if available
+      let userSummariesSection = '';
+      let userSummariesTextSection = '';
+      if (userSummariesText) {
+        userSummariesSection = `
+            <h3>Your Written Summary:</h3>
+            <div style="background-color: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0; border-radius: 5px;">
+              <div style="white-space: pre-wrap; word-wrap: break-word;">${userSummariesText.replace(/\n/g, '<br>')}</div>
+            </div>
+        `;
+        userSummariesTextSection = `Your Written Summary:\n${userSummariesText}\n\n`;
+      }
+
       htmlContent = `
         <html>
           <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <h2>Interview Summary - Error</h2>
             <p>There was an error generating the summary for your interview. Below is the full conversation history and the error message.</p>
+
+            ${userSummariesSection}
 
             <h3>Error Message:</h3>
             <div style="background-color: #fee; border-left: 4px solid #f00; padding: 10px; margin: 10px 0;">
@@ -70,17 +103,33 @@ export async function POST(request) {
           </body>
         </html>
       `;
-      textContent = `Interview Summary - Error\n\nError Message:\n${error}\n\nFull Conversation History:\n${conversationText}`;
+      textContent = `Interview Summary - Error\n\n${userSummariesTextSection}Error Message:\n${error}\n\nFull Conversation History:\n${conversationText}`;
     } else {
       // Success case: send conversation history and summary
       subject = 'Interview Summary - Complete';
+
+      // Build HTML content with user summaries if available
+      let userSummariesSection = '';
+      let userSummariesTextSection = '';
+      if (userSummariesText) {
+        userSummariesSection = `
+            <h3>Your Written Summary:</h3>
+            <div style="background-color: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0; border-radius: 5px;">
+              <div style="white-space: pre-wrap; word-wrap: break-word;">${userSummariesText.replace(/\n/g, '<br>')}</div>
+            </div>
+        `;
+        userSummariesTextSection = `Your Written Summary:\n${userSummariesText}\n\n`;
+      }
+
       htmlContent = `
         <html>
           <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <h2>Your Interview Summary</h2>
             <p>Thank you for completing the interview! Below is your generated summary and the full conversation history.</p>
 
-            <h3>Generated Summary:</h3>
+            ${userSummariesSection}
+
+            <h3>AI Generated Summary:</h3>
             <div style="background-color: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 15px 0; border-radius: 5px;">
               <div style="white-space: pre-wrap; word-wrap: break-word;">${summary}</div>
             </div>
@@ -92,7 +141,7 @@ export async function POST(request) {
           </body>
         </html>
       `;
-      textContent = `Your Interview Summary\n\nGenerated Summary:\n${summary}\n\nFull Conversation History:\n${conversationText}`;
+      textContent = `Your Interview Summary\n\n${userSummariesTextSection}AI Generated Summary:\n${summary}\n\nFull Conversation History:\n${conversationText}`;
     }
 
     const msg = {

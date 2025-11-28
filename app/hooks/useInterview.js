@@ -17,6 +17,7 @@ export function useInterview() {
   const [primaryQuestions, setPrimaryQuestions] = useState([]);
   const [questionSummaries, setQuestionSummaries] = useState({});
   const [questionLoadingStates, setQuestionLoadingStates] = useState({});
+  const [userEditedSummaries, setUserEditedSummaries] = useState({});
 
   // Fetch questions on mount
   useEffect(() => {
@@ -76,7 +77,7 @@ export function useInterview() {
   /**
    * Sends email with conversation history and summary/error
    */
-  const sendEmail = useCallback(async (conversationHistory, summary, error) => {
+  const sendEmail = useCallback(async (conversationHistory, summary, error, userEditedSummaries = {}) => {
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -88,6 +89,8 @@ export function useInterview() {
           conversationHistory,
           summary,
           error,
+          userEditedSummaries,
+          primaryQuestions,
         }),
       });
 
@@ -106,8 +109,9 @@ export function useInterview() {
   /**
    * Generates summaries for each question individually
    * Accepts an array of objects with { questionIndex, conversationHistory, primaryQuestion }
+   * and optionally userEditedSummaries object
    */
-  const generateArticle = useCallback(async (questionHistories) => {
+  const generateArticle = useCallback(async (questionHistories, userEditedSummaries = {}) => {
     setIsLoading(true);
     setInterviewComplete(true);
     setQuestionSummaries({});
@@ -181,12 +185,13 @@ export function useInterview() {
     }).filter(Boolean).join('\n\n---\n\n');
 
     setArticle(combinedArticle);
+    setUserEditedSummaries(userEditedSummaries);
 
     // Send email with combined summaries or errors
     if (hasErrors) {
-      await sendEmail(allConversationHistory, combinedArticle, 'Some summaries failed to generate');
+      await sendEmail(allConversationHistory, combinedArticle, 'Some summaries failed to generate', userEditedSummaries);
     } else {
-      await sendEmail(allConversationHistory, combinedArticle, null);
+      await sendEmail(allConversationHistory, combinedArticle, null, userEditedSummaries);
     }
 
     setIsLoading(false);
@@ -217,14 +222,14 @@ export function useInterview() {
 
     // Check if article is an error message
     if (article && (article.startsWith('API Error') || article.startsWith('Error:'))) {
-      await sendEmail(conversationHistory, null, article);
+      await sendEmail(conversationHistory, null, article, userEditedSummaries);
     } else {
       // Success case - send with summary
-      await sendEmail(conversationHistory, article || null, null);
+      await sendEmail(conversationHistory, article || null, null, userEditedSummaries);
     }
 
     setIsSendingEmail(false);
-  }, [isSendingEmail, article, sendEmail]);
+  }, [isSendingEmail, article, sendEmail, userEditedSummaries]);
 
   return {
     // State
@@ -238,6 +243,7 @@ export function useInterview() {
     primaryQuestions,
     questionSummaries,
     questionLoadingStates,
+    userEditedSummaries,
 
     // Actions
     generateArticle,

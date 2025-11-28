@@ -84,9 +84,9 @@ export default function SurveyPage() {
       setQuestionHistories(histories);
 
       // Generate summaries for each question
-      generateArticle(histories);
+      generateArticle(histories, userEditedSummaries);
     }
-  }, [completedQuestions, primaryQuestions, interviewComplete, questionStates, generateArticle]);
+  }, [completedQuestions, primaryQuestions, interviewComplete, questionStates, generateArticle, userEditedSummaries]);
 
   // Reset question states when starting over
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function SurveyPage() {
 
   const handleRegenerateSummary = () => {
     if (questionHistories.length > 0) {
-      generateArticle(questionHistories);
+      generateArticle(questionHistories, userEditedSummaries);
     }
   };
 
