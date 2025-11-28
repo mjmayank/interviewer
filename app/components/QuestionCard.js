@@ -21,6 +21,8 @@ export default function QuestionCard({
   const [isLoading, setIsLoading] = useState(false);
   const [isComplete, setIsComplete] = useState(externalIsComplete || false);
   const [characterCount, setCharacterCount] = useState(0);
+  const [editableSummary, setEditableSummary] = useState('');
+  const [userEditedSummary, setUserEditedSummary] = useState('');
 
   // Sync external completion state
   useEffect(() => {
@@ -32,8 +34,26 @@ export default function QuestionCard({
       setPairs([{ question: primaryQuestion, answer: null, id: 0 }]);
       setCurrentAnswerInput('');
       setCharacterCount(0);
+      setEditableSummary('');
+      setUserEditedSummary('');
     }
   }, [externalIsComplete, isComplete, primaryQuestion]);
+
+  // When question becomes complete, concatenate all answers
+  useEffect(() => {
+    if (isComplete && pairs.length > 0) {
+      const allAnswers = pairs
+        .filter(pair => pair.answer)
+        .map(pair => pair.answer)
+        .join(' ');
+
+      // Only set if editableSummary is empty (first time completing)
+      // Use userEditedSummary if it exists, otherwise use concatenated answers
+      if (!editableSummary) {
+        setEditableSummary(userEditedSummary || allAnswers);
+      }
+    }
+  }, [isComplete, pairs, editableSummary, userEditedSummary]);
 
   // Get the active pair (the last one without an answer)
   const activePairIndex = pairs.findIndex(p => p.answer === null);
@@ -118,11 +138,19 @@ export default function QuestionCard({
       if (onComplete) {
         onComplete(questionIndex);
       }
+      // Concatenate all answers for editable summary
+      const allAnswers = updatedPairsWithAnswer
+        .filter(pair => pair.answer)
+        .map(pair => pair.answer)
+        .join(' ');
+      setEditableSummary(allAnswers);
+
       if (onUpdate) {
         onUpdate(questionIndex, {
           pairs: updatedPairsWithAnswer,
           characterCount: newCharacterCount,
           isComplete: true,
+          userEditedSummary: userEditedSummary || allAnswers,
         });
       }
       return;
@@ -152,17 +180,29 @@ export default function QuestionCard({
       if (onComplete) {
         onComplete(questionIndex);
       }
+      // Concatenate all answers for editable summary
+      const allAnswers = updatedPairsWithAnswer
+        .filter(pair => pair.answer)
+        .map(pair => pair.answer)
+        .join(' ');
+      const initialSummary = userEditedSummary || allAnswers;
+      setEditableSummary(initialSummary);
+      if (!userEditedSummary) {
+        setUserEditedSummary(allAnswers);
+      }
+
       if (onUpdate) {
         onUpdate(questionIndex, {
           pairs: updatedPairsWithAnswer,
           characterCount: newCharacterCount,
           isComplete: true,
+          userEditedSummary: initialSummary,
         });
       }
     }
 
     setIsLoading(false);
-  }, [currentAnswerInput, isLoading, activePair, activePairIndex, characterCount, pairs, buildConversationHistory, generateFollowUp, onComplete, onUpdate, questionIndex]);
+  }, [currentAnswerInput, isLoading, activePair, activePairIndex, characterCount, pairs, buildConversationHistory, generateFollowUp, onComplete, onUpdate, questionIndex, userEditedSummary]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
@@ -173,14 +213,26 @@ export default function QuestionCard({
     if (onComplete) {
       onComplete(questionIndex);
     }
+    // Concatenate all answers for editable summary
+    const allAnswers = pairs
+      .filter(pair => pair.answer)
+      .map(pair => pair.answer)
+      .join('\n\n');
+    const initialSummary = userEditedSummary || allAnswers;
+    setEditableSummary(initialSummary);
+    if (!userEditedSummary) {
+      setUserEditedSummary(allAnswers);
+    }
+
     if (onUpdate) {
       onUpdate(questionIndex, {
         pairs,
         characterCount,
         isComplete: true,
+        userEditedSummary: initialSummary,
       });
     }
-  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount]);
+  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount, userEditedSummary]);
 
   // Handle key press
   const handleKeyPress = useCallback((e) => {
@@ -194,6 +246,25 @@ export default function QuestionCard({
   const handleAnswerChange = useCallback((e) => {
     setCurrentAnswerInput(e.target.value);
   }, []);
+
+  // Handle editable summary change
+  const handleEditableSummaryChange = useCallback((e) => {
+    setEditableSummary(e.target.value);
+  }, []);
+
+  // Handle editable summary submission
+  const handleSubmitEditableSummary = useCallback(() => {
+    const summary = editableSummary.trim();
+    setUserEditedSummary(summary);
+    if (onUpdate) {
+      onUpdate(questionIndex, {
+        pairs,
+        characterCount,
+        isComplete: true,
+        userEditedSummary: summary,
+      });
+    }
+  }, [editableSummary, onUpdate, questionIndex, pairs, characterCount]);
 
   return (
     <div
@@ -232,6 +303,32 @@ export default function QuestionCard({
       {isLoading && !isComplete && (
         <div className="mt-2">
           <LoadingIndicator message="Generating follow-up question..." />
+        </div>
+      )}
+
+      {/* Editable Summary Box - shown when question is complete */}
+      {isComplete && editableSummary && (
+        <div className="mt-6 pt-6 border-t border-gray-300">
+          <div className="mb-3">
+            <p className="text-sm font-medium text-gray-700 mb-2">Your Summary (Editable):</p>
+            <p className="text-xs text-gray-500 mb-3">
+              Review and edit your combined responses below. Click "Update Summary" to save your changes.
+            </p>
+          </div>
+          <textarea
+            value={editableSummary}
+            onChange={handleEditableSummaryChange}
+            placeholder="Your combined responses will appear here..."
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[150px]"
+          />
+          <div className="mt-3 flex justify-end">
+            <button
+              onClick={handleSubmitEditableSummary}
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center space-x-2"
+            >
+              <span>Update Summary</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
