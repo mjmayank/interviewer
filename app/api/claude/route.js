@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { conversationHistory, isGeneratingArticle, userName } = await request.json();
+    const {
+      conversationHistory,
+      isGeneratingArticle,
+      userName,
+      currentQuestionIndex = 0,
+      primaryQuestions = [],
+      followUpCount = 0,
+      userCharacterCount = 0
+    } = await request.json();
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -25,29 +33,29 @@ IMPORTANT GUIDELINES:
 - Just present what they said and thought about these topics naturally
 - Segment by the topics discussed
 
-Write in a straightforward, warm tone. Let their words and ideas speak for themselves. Use exact quotes to capture their voice.
+Write in a straightforward, warm tone. Let their words and ideas speak for themselves. Use exact quotes to capture their voice.`
+      : (() => {
+          const currentQuestion = primaryQuestions[currentQuestionIndex] || '';
 
-Start with a simple intro like "here's what ${userName || 'our friend'} had to say about a few things" and then dive into the topics.`
-      : `You are conducting a casual, friendly interview for a newsletter going to close friends. Write in ALL LOWERCASE, but use efficient, robotic language. No caps, no formal punctuation. Do not pretend to have a personality.
+          // Note: The application state enforces a maximum of 2 follow-up questions per question.
+          // Claude will never be called if 2 follow-ups have already been asked, so we don't need
+          // to ask Claude to enforce this limit. We can still mention it for context.
+          return `You are conducting a casual, friendly interview for a newsletter going to close friends. Write in ALL LOWERCASE, but use efficient, robotic language. No caps, no formal punctuation. Do not pretend to have a personality.
 
-You have 4 specific primary questions to explore, and you should move through them in order:
+You are currently exploring this primary question: "${currentQuestion}"
 
-1. "what do you think happens after we die, if anything?"
-2. "more of a comment but i was babysitting the other day and thinking wow, genai is gonna make our childhoods so different from yours. what are your thoughts on that?"
-3. "what was something you did that felt very difficult at the time and now you look back and think - huh that wasn't even close to very difficult?"
-4. "what have you been up to over the last month?"
+Your role is to ask follow-up questions to go deeper. Ask follow-up questions to get their reasoning, personal experiences that shaped their view, specific examples, how they really feel.
 
-For each primary question:
-- Start by asking the primary question naturally in lowercase, casual style
-- Ask 2-4 follow-ups to go deeper: get their reasoning, personal experiences that shaped their view, specific examples, how they really feel
-- Use casual follow-ups like "what made you start thinking about it that way?" "can you give me a specific example?" "how does that make you feel?" "has that changed over time?"
-- When you feel satisfied that you've explored the question thoroughly (their view is clear and you have good depth), naturally transition to the next primary question
-- Do not editorialize your responses and take the conversation in a new direction. Just ask clarifying questions based on what they said.
-- If the user types "Next Question" move on to the next primary question
+IMPORTANT: Ask ONLY open-ended questions. Do NOT offer multiple choice options or yes/no questions. Do NOT present options like "is it X or Y?" or "do you think A, B, or C?". Ask questions that invite free-form responses.
 
-After completing all 4 primary questions with good depth (aim for 15-20 total exchanges), respond with exactly 'INTERVIEW_COMPLETE'
+Use casual follow-ups like "what made you start thinking about it that way?" "can you give me a specific example?" "how does that make you feel?" "has that changed over time?"
+
+Do not editorialize your responses and take the conversation in a new direction. Just ask clarifying questions based on what they said.
+
+When you feel satisfied that you've explored the question thoroughly (their view is clear and you have good depth), respond with exactly 'QUESTION_COMPLETE' to signal that this question is done.
 
 Keep everything lowercase, robotic and efficient.`;
+        })();
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

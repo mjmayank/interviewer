@@ -2,30 +2,28 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Send, Copy, RefreshCw, Mail } from 'lucide-react';
+import { useInterview } from './hooks/useInterview';
 
 export default function Home() {
-  const [userName, setUserName] = useState('');
-  const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [interviewComplete, setInterviewComplete] = useState(false);
-  const [article, setArticle] = useState('');
   const [isCopied, setIsCopied] = useState(false);
-  const [pendingMessages, setPendingMessages] = useState([]);
-  const [debounceTimer, setDebounceTimer] = useState(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const messagesRef = useRef([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  const DEVELOPER_EMAIL = 'mjmayank@gmail.com';
-
-  // Keep messagesRef in sync with messages state
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  const {
+    userName,
+    setUserName,
+    messages,
+    isLoading,
+    interviewComplete,
+    article,
+    emailSent,
+    isSendingEmail,
+    submitAnswer,
+    handleSkipQuestion,
+    handleStartOver,
+    handleSendEmail,
+  } = useInterview();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,220 +33,22 @@ export default function Home() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  useEffect(() => {
-    // Start the interview automatically when component mounts
-    startInterview();
-
-    // Cleanup timer on unmount
-    return () => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-    };
-  }, []);
-
-  // Handle debounce timer when user is typing
-  useEffect(() => {
-    if (!isTyping || isLoading || pendingMessages.length === 0) return;
-
-    // Clear existing timer
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-
-    // Set new timer - wait 5 seconds after they stop typing
-    const timer = setTimeout(() => {
-      // Build message list from current messages state minus pending, then add all pending
-      const baseMessages = messagesRef.current.slice(0, messagesRef.current.length - pendingMessages.length);
-      const allMessages = [...baseMessages, ...pendingMessages];
-      processMessages(allMessages);
-      setPendingMessages([]);
-      setIsTyping(false);
-    }, 5000);
-
-    setDebounceTimer(timer);
-
-    return () => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [isTyping, inputValue, pendingMessages.length]);
-
-  const callClaude = async (conversationHistory, isGeneratingArticle = false) => {
-    try {
-      const response = await fetch('/api/claude', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          conversationHistory,
-          isGeneratingArticle,
-          userName,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('API request failed:', errorData);
-        return `API Error (${response.status}): ${errorData.error || 'Unknown error'}`;
-      }
-
-      const data = await response.json();
-      return data.content;
-    } catch (error) {
-      console.error('Error calling Claude:', error);
-      return `Error: ${error.message}`;
-    }
-  };
-
-  const sendEmail = async (conversationHistory, summary, error) => {
-    try {
-      const response = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: DEVELOPER_EMAIL,
-          conversationHistory,
-          summary,
-          error,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to send email:', errorData);
-        return;
-      }
-
-      setEmailSent(true);
-      console.log('Email sent successfully');
-    } catch (error) {
-      console.error('Error sending email:', error);
-    }
-  };
-
-  const startInterview = async () => {
-    setIsLoading(true);
-    const initialMessage = await callClaude([
-      { role: 'user', content: 'Hi! I\'m ready for your questions.' },
-    ]);
-    setMessages([{ role: 'assistant', content: initialMessage }]);
-    setIsLoading(false);
-  };
-
-  const processMessages = async (messagesToProcess) => {
-    setIsLoading(true);
-
-    // Check if user manually triggers summary generation
-    const lastMessage = messagesToProcess[messagesToProcess.length - 1];
-    if (lastMessage.content === 'GENERATE_SUMMARY') {
-      setInterviewComplete(true);
-
-      // Generate the article using current conversation (excluding GENERATE_SUMMARY)
-      const conversationWithoutTrigger = messagesToProcess.slice(0, -1);
-      const articlePrompt = [
-        ...conversationWithoutTrigger,
-        {
-          role: 'user',
-          content: 'Please write the newsletter summary based on our conversation so far.',
-        },
-      ];
-
-      try {
-        const generatedArticle = await callClaude(articlePrompt, true);
-
-        // Check if the response is an error
-        if (generatedArticle.startsWith('API Error') || generatedArticle.startsWith('Error:')) {
-          // Error generating summary - send email with error
-          await sendEmail(conversationWithoutTrigger, null, generatedArticle);
-        } else {
-          // Success - send email with summary
-          setArticle(generatedArticle);
-          await sendEmail(conversationWithoutTrigger, generatedArticle, null);
-        }
-      } catch (error) {
-        // Error generating summary - send email with error
-        const errorMessage = `Error: ${error.message}`;
-        await sendEmail(conversationWithoutTrigger, null, errorMessage);
-      }
-
-      setIsLoading(false);
-      return;
-    }
-
-    // Get Claude's response
-    const claudeResponse = await callClaude(messagesToProcess);
-
-    // Check if interview is complete
-    if (claudeResponse.trim() === 'INTERVIEW_COMPLETE') {
-      setInterviewComplete(true);
-
-      // Generate the article
-      const articlePrompt = [
-        ...messagesToProcess,
-        { role: 'assistant', content: 'INTERVIEW_COMPLETE' },
-        {
-          role: 'user',
-          content: 'Please write the newsletter summary based on our conversation.',
-        },
-      ];
-
-      try {
-        const generatedArticle = await callClaude(articlePrompt, true);
-
-        // Check if the response is an error
-        if (generatedArticle.startsWith('API Error') || generatedArticle.startsWith('Error:')) {
-          // Error generating summary - send email with error
-          const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
-          await sendEmail(fullConversation, null, generatedArticle);
-        } else {
-          // Success - send email with summary
-          setArticle(generatedArticle);
-          const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
-          await sendEmail(fullConversation, generatedArticle, null);
-        }
-      } catch (error) {
-        // Error generating summary - send email with error
-        const errorMessage = `Error: ${error.message}`;
-        const fullConversation = [...messagesToProcess, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
-        await sendEmail(fullConversation, null, errorMessage);
-      }
-
-      setIsLoading(false);
-    } else {
-      // Continue the interview
-      setMessages([...messagesToProcess, { role: 'assistant', content: claudeResponse }]);
-      setIsLoading(false);
-    }
-  };
-
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
 
-    // Add user message to display immediately
-    const newMessage = { role: 'user', content: userMessage };
-    setMessages([...messages, newMessage]);
-    setPendingMessages([...pendingMessages, newMessage]);
+    await submitAnswer(userMessage);
 
     // Maintain focus on input
     setTimeout(() => {
       inputRef.current?.focus();
     }, 0);
-
-    // User just sent a message, mark as typing activity
-    setIsTyping(true);
   };
 
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
-    setIsTyping(true);
   };
 
   const handleKeyPress = (e) => {
@@ -262,51 +62,6 @@ export default function Home() {
     navigator.clipboard.writeText(article);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  const handleStartOver = () => {
-    setMessages([]);
-    setInputValue('');
-    setInterviewComplete(false);
-    setArticle('');
-    setIsCopied(false);
-    setEmailSent(false);
-    startInterview();
-  };
-
-  const handleSendEmail = async () => {
-    if (isSendingEmail) return;
-
-    setIsSendingEmail(true);
-
-    const conversationHistory = messages;
-
-    // Check if article is an error message
-    if (article && (article.startsWith('API Error') || article.startsWith('Error:'))) {
-      await sendEmail(conversationHistory, null, article);
-    } else {
-      // Success case - send with summary
-      await sendEmail(conversationHistory, article || null, null);
-    }
-
-    setIsSendingEmail(false);
-  };
-
-  const handleSkipQuestion = async () => {
-    if (isLoading) return;
-
-    const skipMessage = 'Next question';
-
-    // Add user message to display immediately
-    const newMessage = { role: 'user', content: skipMessage };
-    setMessages([...messages, newMessage]);
-    setPendingMessages([...pendingMessages, newMessage]);
-
-    // Process the message immediately (no debounce for skip button)
-    const allMessages = [...messages, newMessage];
-    processMessages(allMessages);
-    setPendingMessages([]);
-    setIsTyping(false);
   };
 
   return (
@@ -470,4 +225,3 @@ export default function Home() {
     </div>
   );
 }
-
