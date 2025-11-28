@@ -139,7 +139,7 @@ export default function Home() {
             {/* Input Area */}
             <div className="border-t border-gray-200 p-4 bg-gray-50">
               <div className="text-xs text-gray-500 mb-2 text-center">
-                ai responds 5 seconds after you stop typing • type "GENERATE_SUMMARY" to end early
+                ai responds 5 seconds after you stop typing
               </div>
               <div className="flex space-x-3">
                 <input

@@ -52,8 +52,6 @@ Use casual follow-ups like "what made you start thinking about it that way?" "ca
 
 Do not editorialize your responses and take the conversation in a new direction. Just ask clarifying questions based on what they said.
 
-When you feel satisfied that you've explored the question thoroughly (their view is clear and you have good depth), respond with exactly 'QUESTION_COMPLETE' to signal that this question is done.
-
 Keep everything lowercase, robotic and efficient.`;
         })();
 

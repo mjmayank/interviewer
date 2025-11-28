@@ -18,7 +18,7 @@ export function useInterview() {
   // Interview state
   const [primaryQuestions, setPrimaryQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [followUpCount, setFollowUpCount] = useState(0);
+  const [followUpCounts, setFollowUpCounts] = useState({}); // Maps questionIndex -> follow-up count
   const [userCharacterCount, setUserCharacterCount] = useState(0);
 
   // Debounce timer ref
@@ -118,7 +118,7 @@ export function useInterview() {
           userName,
           currentQuestionIndex: overrides.currentQuestionIndex ?? currentQuestionIndex,
           primaryQuestions: overrides.primaryQuestions ?? primaryQuestions,
-          followUpCount: overrides.followUpCount ?? followUpCount,
+          followUpCount: overrides.followUpCount ?? (followUpCounts[currentQuestionIndex] ?? 0),
           userCharacterCount: overrides.userCharacterCount ?? userCharacterCount,
         }),
       });
@@ -135,7 +135,7 @@ export function useInterview() {
       console.error('Error calling Claude:', error);
       return `Error: ${error.message}`;
     }
-  }, [userName, currentQuestionIndex, primaryQuestions, followUpCount, userCharacterCount]);
+  }, [userName, currentQuestionIndex, primaryQuestions, followUpCounts, userCharacterCount]);
 
   /**
    * Sends email with conversation history and summary/error
@@ -174,7 +174,7 @@ export function useInterview() {
     if (primaryQuestions.length === 0) return;
 
     setCurrentQuestionIndex(0);
-    setFollowUpCount(0);
+    setFollowUpCounts({});
     setUserCharacterCount(0);
 
     // Add first question directly (no API call needed)
@@ -218,21 +218,18 @@ export function useInterview() {
   /**
    * Moves to the next question or completes the interview
    */
-  const moveToNextQuestion = useCallback(async (currentMessages, skipClaudeResponse = false) => {
+  const moveToNextQuestion = useCallback(async (currentMessages) => {
     if (currentQuestionIndex < primaryQuestions.length - 1) {
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
-      setFollowUpCount(0);
+      // Don't reset followUpCounts - we maintain counts per question
       setUserCharacterCount(0);
 
       // Add the next question directly (no API call needed)
       const nextQuestion = primaryQuestions[nextIndex];
       const nextQuestionMessage = { role: 'assistant', content: nextQuestion };
-      const finalMessages = skipClaudeResponse
-        ? currentMessages
-        : [...currentMessages, { role: 'assistant', content: '' }];
 
-      setMessages([...finalMessages, nextQuestionMessage]);
+      setMessages([...currentMessages, nextQuestionMessage]);
     } else {
       // All questions complete
       setInterviewComplete(true);
@@ -249,82 +246,60 @@ export function useInterview() {
     // Use provided messages or fall back to current state
     const messagesToUse = messagesToProcess ?? messages;
 
-    // Check if user manually triggers summary generation
-    const lastMessage = messagesToUse[messagesToUse.length - 1];
-    if (lastMessage.content === 'GENERATE_SUMMARY') {
-      setInterviewComplete(true);
-
-      // Generate the article using current conversation (excluding GENERATE_SUMMARY)
-      const conversationWithoutTrigger = messagesToUse.slice(0, -1);
-      await generateArticle(conversationWithoutTrigger);
-      setIsLoading(false);
-      return;
-    }
-
     // Calculate current follow-up count for the messages being processed
+    const lastMessage = messagesToUse[messagesToUse.length - 1];
     const questionStart = findQuestionStartIndex(messagesToUse, currentQuestionIndex, primaryQuestions);
     const messagesSinceStart = messagesToUse.slice(questionStart);
     const assistantMessages = messagesSinceStart.filter(msg => msg.role === 'assistant');
     const followUpCountForMessages = Math.max(0, assistantMessages.length - 1);
 
-    // HARD LIMIT: Check if we've already asked 2 follow-ups for this question
-    if (followUpCountForMessages >= 2) {
+    // Only process if the last message is from the user (they just submitted)
+    // If the last message is from assistant, we're waiting for user input
+    if (lastMessage.role === 'assistant') {
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if we should move to next question BEFORE calling Claude
+    // This only happens when the user submits a message
+    // Move to next question if:
+    // 1. We've asked 2 follow-ups AND user just submitted, OR
+    // 2. User has typed 400+ characters AND user just submitted
+    const shouldMoveToNext =
+      (followUpCountForMessages >= 2) ||
+      (userCharacterCount >= 400);
+
+    if (shouldMoveToNext) {
       // Move to next question without calling Claude
-      await moveToNextQuestion(messagesToUse, true);
+      await moveToNextQuestion(messagesToUse);
       setIsLoading(false);
       return;
     }
 
-    // Get Claude's response (only if we haven't reached the 2 follow-up limit)
+    // Get Claude's response (only if we haven't reached the limit)
     const claudeResponse = await callClaude(messagesToUse);
-
-    // Check if interview is complete
-    if (claudeResponse.trim() === 'INTERVIEW_COMPLETE') {
-      setInterviewComplete(true);
-
-      // Generate the article
-      const fullConversation = [...messagesToUse, { role: 'assistant', content: 'INTERVIEW_COMPLETE' }];
-      await generateArticle(fullConversation);
-      setIsLoading(false);
-      return;
-    }
-
-    const responseText = claudeResponse.trim();
 
     // Calculate new follow-up count after adding Claude's response
     // After adding this response, we'll have assistantMessages.length + 1 total
     // Follow-up count = (assistantMessages.length + 1) - 1
     const newFollowUpCount = assistantMessages.length;
 
-    setFollowUpCount(newFollowUpCount);
+    // Update follow-up count for the current question
+    setFollowUpCounts(prev => ({
+      ...prev,
+      [currentQuestionIndex]: newFollowUpCount
+    }));
 
-    // Check if current question is complete
-    // Complete if: Claude says QUESTION_COMPLETE, we've hit 2 follow-ups, or user has typed 400+ characters
-    const isQuestionComplete =
-      responseText === 'QUESTION_COMPLETE' ||
-      newFollowUpCount >= 2 ||
-      userCharacterCount >= 400;
-
-    if (isQuestionComplete) {
-      // Move to next question or complete interview
-      const responseToAdd = responseText === 'QUESTION_COMPLETE'
-        ? { role: 'assistant', content: '' } // Don't show QUESTION_COMPLETE to user
-        : { role: 'assistant', content: claudeResponse };
-
-      const updatedMessages = [...messagesToUse, responseToAdd];
-      await moveToNextQuestion(updatedMessages, responseText === 'QUESTION_COMPLETE');
+    // Always add Claude's response and wait for user to submit again
+    // Safety check: if Claude asked a 3rd follow-up despite our instructions, block it
+    if (newFollowUpCount > 2) {
+      // This shouldn't happen, but if it does, move to next question
+      await moveToNextQuestion(messagesToUse);
       setIsLoading(false);
     } else {
-      // Continue the interview - add Claude's follow-up response
-      // Safety check: if Claude asked a 3rd follow-up despite our instructions, block it
-      if (newFollowUpCount > 2) {
-        await moveToNextQuestion(messagesToUse, true);
-        setIsLoading(false);
-      } else {
-        // Safe to add Claude's response
-        setMessages([...messagesToUse, { role: 'assistant', content: claudeResponse }]);
-        setIsLoading(false);
-      }
+      // Add Claude's response and wait for user to submit again
+      setMessages([...messagesToUse, { role: 'assistant', content: claudeResponse }]);
+      setIsLoading(false);
     }
   }, [
     messages,
@@ -415,7 +390,7 @@ export function useInterview() {
 
       // Update state for next question
       setCurrentQuestionIndex(nextIndex);
-      setFollowUpCount(0);
+      // Don't reset followUpCounts - we maintain counts per question
       setUserCharacterCount(0);
       setMessages(finalMessages);
     } else {
@@ -448,7 +423,7 @@ export function useInterview() {
     setArticle('');
     setEmailSent(false);
     setCurrentQuestionIndex(0);
-    setFollowUpCount(0);
+    setFollowUpCounts({});
     setUserCharacterCount(0);
     startInterview();
   }, [startInterview]);
@@ -564,7 +539,8 @@ export function useInterview() {
     isSendingEmail,
     primaryQuestions,
     currentQuestionIndex,
-    followUpCount,
+    followUpCount: followUpCounts[currentQuestionIndex] ?? 0, // Return current question's count for backward compatibility
+    followUpCounts, // Also expose the full object
     userCharacterCount,
     isTyping,
     questionStartMessageIndex: questionStartIndex, // Keep for backward compatibility
