@@ -15,6 +15,8 @@ export function useInterview() {
 
   // Interview state
   const [primaryQuestions, setPrimaryQuestions] = useState([]);
+  const [questionSummaries, setQuestionSummaries] = useState({});
+  const [questionLoadingStates, setQuestionLoadingStates] = useState({});
 
   // Fetch questions on mount
   useEffect(() => {
@@ -38,7 +40,7 @@ export function useInterview() {
   /**
    * Calls the Claude API with the conversation history
    */
-  const callClaude = useCallback(async (conversationHistory, isGeneratingArticle = false) => {
+  const callClaude = useCallback(async (conversationHistory, isGeneratingArticle = false, primaryQuestion = '') => {
     try {
       const response = await fetch('/api/claude', {
         method: 'POST',
@@ -51,6 +53,7 @@ export function useInterview() {
           userName,
           currentQuestionIndex: 0, // Not used in new structure but kept for API compatibility
           primaryQuestions,
+          primaryQuestion,
           followUpCount: 0, // Not used in new structure but kept for API compatibility
           userCharacterCount: 0, // Not used in new structure but kept for API compatibility
         }),
@@ -101,41 +104,93 @@ export function useInterview() {
   }, []);
 
   /**
-   * Generates the article and sends email
-   * Accepts conversationHistory as parameter (built by the survey page from question states)
+   * Generates summaries for each question individually
+   * Accepts an array of objects with { questionIndex, conversationHistory, primaryQuestion }
    */
-  const generateArticle = useCallback(async (conversationHistory) => {
+  const generateArticle = useCallback(async (questionHistories) => {
     setIsLoading(true);
     setInterviewComplete(true);
+    setQuestionSummaries({});
 
-    const articlePrompt = [
-      ...conversationHistory,
-      {
-        role: 'user',
-        content: 'Please write the newsletter summary based on our conversation so far.',
-      },
-    ];
+    // Initialize loading states for all questions
+    const initialLoadingStates = {};
+    questionHistories.forEach(({ questionIndex }) => {
+      initialLoadingStates[questionIndex] = true;
+    });
+    setQuestionLoadingStates(initialLoadingStates);
 
-    try {
-      const generatedArticle = await callClaude(articlePrompt, true);
+    // Generate summaries for all questions in parallel
+    const summaryPromises = questionHistories.map(async ({ questionIndex, conversationHistory, primaryQuestion }) => {
+      const articlePrompt = [
+        ...conversationHistory,
+        {
+          role: 'user',
+          content: 'Please write the newsletter summary based on our conversation so far.',
+        },
+      ];
 
-      // Check if the response is an error
-      if (generatedArticle.startsWith('API Error') || generatedArticle.startsWith('Error:')) {
-        // Error generating summary - send email with error
-        await sendEmail(conversationHistory, null, generatedArticle);
-      } else {
-        // Success - send email with summary
-        setArticle(generatedArticle);
-        await sendEmail(conversationHistory, generatedArticle, null);
+      try {
+        const generatedSummary = await callClaude(articlePrompt, true, primaryQuestion);
+
+        // Check if the response is an error
+        if (generatedSummary.startsWith('API Error') || generatedSummary.startsWith('Error:')) {
+          return { questionIndex, summary: null, error: generatedSummary };
+        } else {
+          return { questionIndex, summary: generatedSummary, error: null };
+        }
+      } catch (error) {
+        const errorMessage = `Error: ${error.message}`;
+        return { questionIndex, summary: null, error: errorMessage };
       }
-    } catch (error) {
-      // Error generating summary - send email with error
-      const errorMessage = `Error: ${error.message}`;
-      await sendEmail(conversationHistory, null, errorMessage);
-    } finally {
-      setIsLoading(false);
+    });
+
+    // Wait for all summaries to complete
+    const results = await Promise.all(summaryPromises);
+
+    // Update state with all summaries
+    const newSummaries = {};
+    const newLoadingStates = {};
+    let hasErrors = false;
+    const allConversationHistory = [];
+
+    results.forEach(({ questionIndex, summary, error }) => {
+      newLoadingStates[questionIndex] = false;
+      if (error) {
+        hasErrors = true;
+        newSummaries[questionIndex] = error;
+      } else {
+        newSummaries[questionIndex] = summary;
+      }
+    });
+
+    // Build full conversation history for email
+    questionHistories.forEach(({ conversationHistory }) => {
+      allConversationHistory.push(...conversationHistory);
+    });
+
+    setQuestionSummaries(newSummaries);
+    setQuestionLoadingStates(newLoadingStates);
+
+    // Combine all summaries into a single article for display/email
+    const combinedArticle = primaryQuestions.map((question, index) => {
+      const summary = newSummaries[index] || '';
+      if (summary && !summary.startsWith('API Error') && !summary.startsWith('Error:')) {
+        return `${question}\n\n${summary}`;
+      }
+      return null;
+    }).filter(Boolean).join('\n\n---\n\n');
+
+    setArticle(combinedArticle);
+
+    // Send email with combined summaries or errors
+    if (hasErrors) {
+      await sendEmail(allConversationHistory, combinedArticle, 'Some summaries failed to generate');
+    } else {
+      await sendEmail(allConversationHistory, combinedArticle, null);
     }
-  }, [callClaude, sendEmail]);
+
+    setIsLoading(false);
+  }, [callClaude, sendEmail, primaryQuestions]);
 
   /**
    * Resets the interview to start over
@@ -144,6 +199,8 @@ export function useInterview() {
     setInterviewComplete(false);
     setArticle('');
     setEmailSent(false);
+    setQuestionSummaries({});
+    setQuestionLoadingStates({});
   }, []);
 
   /**
@@ -179,6 +236,8 @@ export function useInterview() {
     emailSent,
     isSendingEmail,
     primaryQuestions,
+    questionSummaries,
+    questionLoadingStates,
 
     // Actions
     generateArticle,
