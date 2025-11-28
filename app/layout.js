@@ -1,7 +1,7 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'Three Questions - Life Interview',
+  title: 'Letterloop',
   description: 'A conversation to share with close friends',
 }
 
