@@ -1,144 +1,79 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Copy, RefreshCw, Mail, ArrowRight } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Copy, RefreshCw, Mail } from 'lucide-react';
 import { useInterview } from '../hooks/useInterview';
+import QuestionCard from '../components/QuestionCard';
 
 export default function SurveyPage() {
   const [isCopied, setIsCopied] = useState(false);
-  const [answerInputs, setAnswerInputs] = useState({});
+  const [questionStates, setQuestionStates] = useState({});
+  const [completedQuestions, setCompletedQuestions] = useState(new Set());
 
   const {
     userName,
     setUserName,
-    messages,
     isLoading,
     interviewComplete,
     article,
     emailSent,
     isSendingEmail,
-    submitAnswer,
-    handleSkipQuestion,
     handleStartOver,
     handleSendEmail,
-    getCurrentQuestionData,
-    getAllQuestionsData,
-    currentQuestionIndex,
     primaryQuestions,
-    questionStartMessageIndex,
+    generateArticle,
   } = useInterview();
 
-  // Memoize questions data to avoid recalculating on every render
-  const allQuestionsData = useMemo(() => getAllQuestionsData(), [messages, currentQuestionIndex, primaryQuestions]);
+  // Track when a question is completed
+  const handleQuestionComplete = useCallback((questionIndex) => {
+    setCompletedQuestions(prev => new Set([...prev, questionIndex]));
+  }, []);
 
-  const currentQuestionData = getCurrentQuestionData();
-
-  // Get messages for current question in chronological order
-  const currentQuestionMessages = useMemo(() => {
-    if (!currentQuestionData) return [];
-    return messages.slice(questionStartMessageIndex);
-  }, [messages, questionStartMessageIndex, currentQuestionData]);
-
-  // Check if all follow-ups have been answered (3 answers total)
-  const allFollowUpsAnswered = useMemo(() => {
-    if (!currentQuestionData || currentQuestionData.isComplete) return false;
-
-    const userAnswers = currentQuestionMessages.filter(msg => msg.role === 'user');
-    const assistantMessages = currentQuestionMessages.filter(msg => msg.role === 'assistant');
-
-    // We have 3 answers and the last message is from user (not waiting for follow-up)
-    return userAnswers.length >= 3 &&
-           currentQuestionMessages.length > 0 &&
-           currentQuestionMessages[currentQuestionMessages.length - 1].role === 'user' &&
-           !isLoading;
-  }, [currentQuestionMessages, currentQuestionData, isLoading]);
-
-  // Initialize answer input for the current question when a new assistant message appears
-  useEffect(() => {
-    if (currentQuestionData && !currentQuestionData.isComplete && !isLoading && !allFollowUpsAnswered) {
-      // Find the last assistant message index in current question
-      const lastAssistantIdx = currentQuestionMessages
-        .map((msg, idx) => ({ msg, idx }))
-        .filter(({ msg }) => msg.role === 'assistant')
-        .pop()?.idx;
-
-      if (lastAssistantIdx !== undefined) {
-        const inputKey = `${currentQuestionIndex}-${lastAssistantIdx}`;
-        // Only initialize if it doesn't exist yet (new follow-up question)
-        setAnswerInputs(prev => {
-          if (!(inputKey in prev)) {
-            return {
-              ...prev,
-              [inputKey]: '',
-            };
-          }
-          return prev;
-        });
-      }
-    }
-
-    // Initialize combined answer input when all follow-ups are answered
-    if (allFollowUpsAnswered) {
-      const userAnswers = currentQuestionMessages
-        .filter(msg => msg.role === 'user')
-        .map(msg => msg.content);
-      const combinedKey = `${currentQuestionIndex}-combined`;
-      setAnswerInputs(prev => {
-        if (!(combinedKey in prev)) {
-          return {
-            ...prev,
-            [combinedKey]: userAnswers.join('\n\n'),
-          };
-        }
-        return prev;
-      });
-    }
-  }, [currentQuestionMessages.length, currentQuestionIndex, isLoading, allFollowUpsAnswered]);
-
-  const handleAnswerChange = (inputKey, value) => {
-    setAnswerInputs(prev => ({
+  // Track question state updates
+  const handleQuestionUpdate = useCallback((questionIndex, state) => {
+    setQuestionStates(prev => ({
       ...prev,
-      [inputKey]: value,
+      [questionIndex]: state,
     }));
-  };
+  }, []);
 
-  const handleSubmitAnswer = async (questionIndex, messageIndex) => {
-    const answer = answerInputs[`${questionIndex}-${messageIndex}`] || '';
-    if (!answer.trim() || isLoading) return;
+  // Check if all questions are complete and generate article
+  useEffect(() => {
+    if (primaryQuestions.length === 0 || interviewComplete) return;
 
-    // Submit immediately (no 5 second delay for survey)
-    await submitAnswer(answer.trim(), true);
+    const allComplete = primaryQuestions.every((_, idx) =>
+      completedQuestions.has(idx)
+    );
 
-    // Clear the input after submission
-    setAnswerInputs(prev => {
-      const newInputs = { ...prev };
-      delete newInputs[`${questionIndex}-${messageIndex}`];
-      return newInputs;
-    });
-  };
+    if (allComplete && primaryQuestions.length > 0) {
+      // Build conversation history from question states
+      const conversationHistory = [];
+      for (let i = 0; i < primaryQuestions.length; i++) {
+        const state = questionStates[i];
+        if (state?.pairs) {
+          for (const pair of state.pairs) {
+            if (pair.question) {
+              conversationHistory.push({ role: 'assistant', content: pair.question });
+            }
+            if (pair.answer) {
+              conversationHistory.push({ role: 'user', content: pair.answer });
+            }
+          }
+        }
+      }
 
-  const handleSubmitCombinedAnswer = async (questionIndex) => {
-    const combinedKey = `${questionIndex}-combined`;
-    const combinedAnswer = answerInputs[combinedKey] || '';
-    if (!combinedAnswer.trim() || isLoading) return;
-
-    // Get the current user answers
-    const userAnswers = currentQuestionMessages
-      .filter(msg => msg.role === 'user')
-      .map(msg => msg.content);
-
-    // If the combined answer is different, we need to replace the messages
-    // For now, just submit it as a new answer which will trigger question completion
-    // The system will move to the next question
-    await submitAnswer(combinedAnswer.trim(), true);
-  };
-
-  const handleKeyPress = (e, questionIndex, messageIndex) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSubmitAnswer(questionIndex, messageIndex);
+      // Generate article
+      generateArticle(conversationHistory);
     }
-  };
+  }, [completedQuestions, primaryQuestions, interviewComplete, questionStates, generateArticle]);
+
+  // Reset question states when starting over
+  useEffect(() => {
+    if (!interviewComplete) {
+      setQuestionStates({});
+      setCompletedQuestions(new Set());
+    }
+  }, [interviewComplete]);
 
   const handleCopyArticle = () => {
     navigator.clipboard.writeText(article);
@@ -171,182 +106,22 @@ export default function SurveyPage() {
         {!interviewComplete ? (
           /* Survey Interface */
           <div className="space-y-6">
-            {/* Show all questions */}
-            {allQuestionsData.map((questionData) => {
-              // For completed questions, get their messages
-              const questionStartIdx = questionData.isComplete
-                ? messages.findIndex(
-                    (msg) => msg.role === 'assistant' && msg.content === questionData.question
-                  )
-                : -1;
-              const questionEndIdx = questionData.isComplete && questionData.questionIndex < primaryQuestions.length - 1
-                ? messages.findIndex(
-                    (msg) => msg.role === 'assistant' && msg.content === primaryQuestions[questionData.questionIndex + 1]
-                  )
-                : questionData.isComplete
-                ? messages.length
-                : -1;
-              const questionMessages = questionStartIdx !== -1 ? messages.slice(questionStartIdx, questionEndIdx) : [];
-
-              // Determine question state
-              const isCompleted = questionData.isComplete;
-              const isCurrent = questionData.isCurrent && !questionData.isComplete;
-              const isFuture = !isCompleted && !isCurrent;
+            {/* Show all questions - each card is self-contained */}
+            {primaryQuestions.map((question, questionIndex) => {
+              const questionState = questionStates[questionIndex];
+              const isComplete = completedQuestions.has(questionIndex);
 
               return (
-                <div
-                  key={questionData.questionIndex}
-                  className={`bg-white rounded-lg shadow-lg p-6 ${
-                    isCurrent ? 'ring-2 ring-blue-500' : ''
-                  } ${isCompleted ? 'opacity-75' : ''} ${isFuture ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex items-center space-x-2 mb-4">
-                    <span className="text-sm font-semibold text-blue-600">
-                      Question {questionData.questionIndex + 1} of {questionData.totalQuestions}
-                    </span>
-                    {isCompleted && (
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                        Complete
-                      </span>
-                    )}
-                    {isCurrent && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                        Current
-                      </span>
-                    )}
-                    {isFuture && (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                        Not started
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Show question text */}
-                  {isFuture && (
-                    <div className="mb-4">
-                      <p className="text-base text-gray-800">{questionData.question}</p>
-                    </div>
-                  )}
-
-                  {/* Show Q&A pairs for completed questions */}
-                  {isCompleted && questionMessages.map((msg, idx) => (
-                    <div key={idx} className="mb-4">
-                      {msg.role === 'assistant' && (
-                        <div className="mb-2">
-                          <p className="text-sm font-medium text-gray-700 mb-1">
-                            {idx === 0 ? 'Question:' : 'Follow-up:'}
-                          </p>
-                          <p className="text-base text-gray-800">{msg.content}</p>
-                        </div>
-                      )}
-                      {msg.role === 'user' && (
-                        <div className="ml-4 mb-2">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Your Answer:</p>
-                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{msg.content}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Show current question with interactive interface */}
-                  {isCurrent && currentQuestionMessages.map((msg, idx) => {
-                  const isLastMessage = idx === currentQuestionMessages.length - 1;
-                  const isAssistant = msg.role === 'assistant';
-                  const inputKey = `${currentQuestionIndex}-${idx}`;
-                  // Show input after the last assistant message, but not while loading (waiting for follow-up)
-                  const showInputAfterThis = isAssistant && isLastMessage && !isLoading;
-
-                  return (
-                    <div key={idx} className="mb-4">
-                      {isAssistant && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-gray-700 mb-1">
-                            {idx === 0 ? 'Question:' : 'Follow-up:'}
-                          </p>
-                          <p className="text-base text-gray-800 mb-3">{msg.content}</p>
-                        </div>
-                      )}
-
-                      {msg.role === 'user' && (
-                        <div className="ml-4 mb-3">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Your Answer:</p>
-                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{msg.content}</p>
-                        </div>
-                      )}
-
-                      {/* Show text box after the last assistant message (when not loading) */}
-                      {showInputAfterThis && (
-                        <div className="space-y-3 mt-4">
-                          <textarea
-                            value={answerInputs[inputKey] || ''}
-                            onChange={(e) => handleAnswerChange(inputKey, e.target.value)}
-                            onKeyDown={(e) => handleKeyPress(e, currentQuestionIndex, idx)}
-                            placeholder="Type your answer here... (Press Cmd/Ctrl + Enter to submit)"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[120px]"
-                            disabled={isLoading}
-                          />
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-gray-500">
-                              Press Cmd/Ctrl + Enter to submit, or click the button below
-                            </p>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleSkipQuestion()}
-                                disabled={isLoading}
-                                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
-                              >
-                                <span>Skip</span>
-                              </button>
-                              <button
-                                onClick={() => handleSubmitAnswer(currentQuestionIndex, idx)}
-                                disabled={isLoading || !answerInputs[inputKey]?.trim()}
-                                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-                              >
-                                <span>Submit</span>
-                                <ArrowRight size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Loading indicator after user message if processing */}
-                      {msg.role === 'user' && isLastMessage && isLoading && (
-                        <div className="mt-2 flex items-center space-x-2 text-sm text-gray-600">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                          <div
-                            className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                            style={{ animationDelay: '0.2s' }}
-                          ></div>
-                          <div
-                            className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                            style={{ animationDelay: '0.4s' }}
-                          ></div>
-                          <span>Processing your answer...</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                  {/* Show loading indicator if waiting for follow-up after last assistant message */}
-                  {isCurrent && currentQuestionMessages.length > 0 &&
-                   currentQuestionMessages[currentQuestionMessages.length - 1].role === 'assistant' &&
-                   isLoading && (
-                    <div className="mt-2 flex items-center space-x-2 text-sm text-gray-600">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                        style={{ animationDelay: '0.2s' }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                        style={{ animationDelay: '0.4s' }}
-                      ></div>
-                      <span>Waiting for follow-up question...</span>
-                    </div>
-                  )}
-                </div>
+                <QuestionCard
+                  key={questionIndex}
+                  questionIndex={questionIndex}
+                  primaryQuestion={question}
+                  totalQuestions={primaryQuestions.length}
+                  userName={userName}
+                  isComplete={isComplete}
+                  onComplete={handleQuestionComplete}
+                  onUpdate={handleQuestionUpdate}
+                />
               );
             })}
           </div>
