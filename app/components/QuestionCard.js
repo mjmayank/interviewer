@@ -39,13 +39,35 @@ export default function QuestionCard({
     }
   }, [externalIsComplete, isComplete, primaryQuestion]);
 
+  // Helper function to join answers with proper punctuation
+  const joinAnswersWithPunctuation = useCallback((answers, separator = ' ') => {
+    if (answers.length === 0) return '';
+    if (answers.length === 1) return answers[0];
+
+    let result = answers[0];
+    for (let i = 1; i < answers.length; i++) {
+      const prevAnswer = result.trim();
+      const currentAnswer = answers[i].trim();
+
+      // Check if previous answer ends with sentence-ending punctuation
+      const endsWithPunctuation = /[.!?]$/.test(prevAnswer);
+
+      if (endsWithPunctuation) {
+        result += separator + currentAnswer;
+      } else {
+        result += '.' + separator + currentAnswer;
+      }
+    }
+    return result;
+  }, []);
+
   // When question becomes complete, concatenate all answers
   useEffect(() => {
     if (isComplete && pairs.length > 0) {
-      const allAnswers = pairs
+      const answers = pairs
         .filter(pair => pair.answer)
-        .map(pair => pair.answer)
-        .join(' ');
+        .map(pair => pair.answer);
+      const allAnswers = joinAnswersWithPunctuation(answers, ' ');
 
       // Only set if editableSummary is empty (first time completing)
       // Use userEditedSummary if it exists, otherwise use concatenated answers
@@ -53,7 +75,7 @@ export default function QuestionCard({
         setEditableSummary(userEditedSummary || allAnswers);
       }
     }
-  }, [isComplete, pairs, editableSummary, userEditedSummary]);
+  }, [isComplete, pairs, editableSummary, userEditedSummary, joinAnswersWithPunctuation]);
 
   // Get the active pair (the last one without an answer)
   const activePairIndex = pairs.findIndex(p => p.answer === null);
@@ -139,10 +161,10 @@ export default function QuestionCard({
         onComplete(questionIndex);
       }
       // Concatenate all answers for editable summary
-      const allAnswers = updatedPairsWithAnswer
+      const answers = updatedPairsWithAnswer
         .filter(pair => pair.answer)
-        .map(pair => pair.answer)
-        .join(' ');
+        .map(pair => pair.answer);
+      const allAnswers = joinAnswersWithPunctuation(answers, ' ');
       setEditableSummary(allAnswers);
 
       if (onUpdate) {
@@ -181,10 +203,10 @@ export default function QuestionCard({
         onComplete(questionIndex);
       }
       // Concatenate all answers for editable summary
-      const allAnswers = updatedPairsWithAnswer
+      const answers = updatedPairsWithAnswer
         .filter(pair => pair.answer)
-        .map(pair => pair.answer)
-        .join(' ');
+        .map(pair => pair.answer);
+      const allAnswers = joinAnswersWithPunctuation(answers, ' ');
       const initialSummary = userEditedSummary || allAnswers;
       setEditableSummary(initialSummary);
       if (!userEditedSummary) {
@@ -202,7 +224,7 @@ export default function QuestionCard({
     }
 
     setIsLoading(false);
-  }, [currentAnswerInput, isLoading, activePair, activePairIndex, characterCount, pairs, buildConversationHistory, generateFollowUp, onComplete, onUpdate, questionIndex, userEditedSummary]);
+  }, [currentAnswerInput, isLoading, activePair, activePairIndex, characterCount, pairs, buildConversationHistory, generateFollowUp, onComplete, onUpdate, questionIndex, userEditedSummary, joinAnswersWithPunctuation]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
@@ -214,10 +236,10 @@ export default function QuestionCard({
       onComplete(questionIndex);
     }
     // Concatenate all answers for editable summary
-    const allAnswers = pairs
+    const answers = pairs
       .filter(pair => pair.answer)
-      .map(pair => pair.answer)
-      .join('\n\n');
+      .map(pair => pair.answer);
+    const allAnswers = joinAnswersWithPunctuation(answers, '\n\n');
     const initialSummary = userEditedSummary || allAnswers;
     setEditableSummary(initialSummary);
     if (!userEditedSummary) {
@@ -232,7 +254,7 @@ export default function QuestionCard({
         userEditedSummary: initialSummary,
       });
     }
-  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount, userEditedSummary]);
+  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount, userEditedSummary, joinAnswersWithPunctuation]);
 
   // Handle key press
   const handleKeyPress = useCallback((e) => {
