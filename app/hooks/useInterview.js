@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const DEVELOPER_EMAIL = 'mjmayank@gmail.com';
-
 export function useInterview() {
   // Core state
   const [userName, setUserName] = useState('');
@@ -85,7 +83,7 @@ export function useInterview() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: DEVELOPER_EMAIL,
+          email: userName && userName.trim() && userName.includes('@') ? userName.trim() : null,
           conversationHistory,
           summary,
           error,
@@ -104,7 +102,7 @@ export function useInterview() {
     } catch (err) {
       console.error('Error sending email:', err);
     }
-  }, []);
+  }, [userName, primaryQuestions]);
 
   /**
    * Generates summaries for each question individually

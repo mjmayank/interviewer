@@ -113,19 +113,6 @@ export default function SurveyPage() {
           <p className="text-gray-600">A conversation to share with close friends</p>
         </div>
 
-        {/* Name Input */}
-        <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
-          <input
-            type="text"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            placeholder="Enter your name..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={interviewComplete}
-          />
-        </div>
-
         {!interviewComplete ? (
           /* Survey Interface */
           <div className="space-y-6">
@@ -147,6 +134,19 @@ export default function SurveyPage() {
                 />
               );
             })}
+
+            {/* Email Input */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+              <input
+                type="email"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Enter your email address..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={interviewComplete}
+              />
+            </div>
           </div>
         ) : (
           /* Article Display */

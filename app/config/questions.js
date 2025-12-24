@@ -1,11 +1,13 @@
 // Primary interview questions
 // This will eventually be fetched from a database
 export const primaryQuestions = [
-  "Ryan asked: Who should the Dem 2028 presidential nominees be",
-  "Ryan asked: What animal haven’t you seen that you most want to see, in captivity or wild",
-  "Anna asked: What is something you love, that everyone else hates?",
-  "Anna asked: What are you leaving behind in 2025?",
-  "Kahini asked: What’s a tradition you want to keep? What’s a tradition you want to make?",
-  "what have you been up to over the last month?",
+  "Palak asked: Share a photo of a toddler you love",
+  "Mark Rober asked: What does a machine yearn for?",
+  "Pavel asked: Paintball or Kart Racing",
+  "Anna asked: What is the best breakup song? (top 3 allowed)",
+  "Cayley asked: What are your New Year's resolutions?",
+  "Mayank asked: What is a place you've visited and never will go back to?",
+  "Kahini asked: What have you been dreaming of eating lately?",
+  "Kahini asked: Ask your parents: what's a habit you had as a child that you still have now",
 ];
 

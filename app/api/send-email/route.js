@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
 
+const DEVELOPER_EMAIL = 'mjmayank@gmail.com';
+
 export async function POST(request) {
   try {
     const { email, conversationHistory, summary, error, userEditedSummaries = {}, primaryQuestions = [] } = await request.json();
@@ -22,11 +24,10 @@ export async function POST(request) {
       );
     }
 
-    if (!email) {
-      return NextResponse.json(
-        { error: 'Email address is required' },
-        { status: 400 }
-      );
+    // Always include developer email, and add user email if provided
+    const emailList = [DEVELOPER_EMAIL];
+    if (email && email.trim() && email.includes('@')) {
+      emailList.push(email.trim());
     }
 
     sgMail.setApiKey(sendGridApiKey);
@@ -34,7 +35,7 @@ export async function POST(request) {
     // Log email configuration (without sensitive data)
     console.log('SendGrid Configuration:');
     console.log('- From Email:', fromEmail);
-    console.log('- To Email:', email);
+    console.log('- To Emails:', emailList);
     console.log('- API Key configured:', !!sendGridApiKey);
     console.log('- API Key length:', sendGridApiKey?.length || 0);
 
@@ -145,7 +146,7 @@ export async function POST(request) {
     }
 
     const msg = {
-      to: email,
+      to: emailList,
       from: fromEmail,
       subject: subject,
       text: textContent,
