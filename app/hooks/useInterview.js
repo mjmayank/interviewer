@@ -16,6 +16,7 @@ export function useInterview() {
   const [questionSummaries, setQuestionSummaries] = useState({});
   const [questionLoadingStates, setQuestionLoadingStates] = useState({});
   const [userEditedSummaries, setUserEditedSummaries] = useState({});
+  const [storedConversationHistory, setStoredConversationHistory] = useState([]);
 
   // Fetch questions on mount
   useEffect(() => {
@@ -185,15 +186,12 @@ export function useInterview() {
     setArticle(combinedArticle);
     setUserEditedSummaries(userEditedSummaries);
 
-    // Send email with combined summaries or errors
-    if (hasErrors) {
-      await sendEmail(allConversationHistory, combinedArticle, 'Some summaries failed to generate', userEditedSummaries);
-    } else {
-      await sendEmail(allConversationHistory, combinedArticle, null, userEditedSummaries);
-    }
+    // Store conversation history for later email sending (removed auto-send)
+    // Email will be sent when user clicks submit button
+    setStoredConversationHistory(allConversationHistory);
 
     setIsLoading(false);
-  }, [callClaude, sendEmail, primaryQuestions]);
+  }, [callClaude, primaryQuestions]);
 
   /**
    * Resets the interview to start over
@@ -204,30 +202,35 @@ export function useInterview() {
     setEmailSent(false);
     setQuestionSummaries({});
     setQuestionLoadingStates({});
+    setStoredConversationHistory([]);
   }, []);
 
   /**
    * Sends email manually
+   * Can optionally accept conversationHistory to rebuild if storedConversationHistory is empty
    */
-  const handleSendEmail = useCallback(async () => {
+  const handleSendEmail = useCallback(async (providedConversationHistory = null) => {
     if (isSendingEmail) return;
 
     setIsSendingEmail(true);
 
-    // Build conversation history from article context if needed
-    // For now, we'll send with the article we have
-    const conversationHistory = []; // Empty since we don't have access to full history here
+    // Use provided conversation history, or stored, or empty array
+    const conversationHistory = providedConversationHistory && providedConversationHistory.length > 0
+      ? providedConversationHistory
+      : (storedConversationHistory && storedConversationHistory.length > 0
+          ? storedConversationHistory
+          : []);
 
     // Check if article is an error message
     if (article && (article.startsWith('API Error') || article.startsWith('Error:'))) {
       await sendEmail(conversationHistory, null, article, userEditedSummaries);
     } else {
-      // Success case - send with summary
-      await sendEmail(conversationHistory, article || null, null, userEditedSummaries);
+      // Success case - send with summary (use article or empty string, not null)
+      await sendEmail(conversationHistory, article || '', null, userEditedSummaries);
     }
 
     setIsSendingEmail(false);
-  }, [isSendingEmail, article, sendEmail, userEditedSummaries]);
+  }, [isSendingEmail, article, sendEmail, userEditedSummaries, storedConversationHistory]);
 
   return {
     // State

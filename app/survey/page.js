@@ -104,6 +104,23 @@ export default function SurveyPage() {
     }
   };
 
+  // Build conversation history from questionHistories for email
+  const buildConversationHistoryForEmail = useCallback(() => {
+    const allHistory = [];
+    questionHistories.forEach(({ conversationHistory }) => {
+      if (conversationHistory && Array.isArray(conversationHistory)) {
+        allHistory.push(...conversationHistory);
+      }
+    });
+    return allHistory;
+  }, [questionHistories]);
+
+  // Wrapper for handleSendEmail that includes conversation history
+  const handleSubmitEmail = useCallback(() => {
+    const conversationHistory = buildConversationHistoryForEmail();
+    handleSendEmail(conversationHistory);
+  }, [buildConversationHistoryForEmail, handleSendEmail]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
@@ -113,57 +130,69 @@ export default function SurveyPage() {
           <p className="text-gray-600">A conversation to share with close friends</p>
         </div>
 
-        {!interviewComplete ? (
-          /* Survey Interface */
-          <div className="space-y-6">
-            {/* Show all questions - each card is self-contained */}
-            {primaryQuestions.map((question, questionIndex) => {
-              const questionState = questionStates[questionIndex];
-              const isComplete = completedQuestions.has(questionIndex);
+        <div className="space-y-6">
+          {/* Show all questions - each card is self-contained */}
+          {primaryQuestions.map((question, questionIndex) => {
+            const questionState = questionStates[questionIndex];
+            const isComplete = completedQuestions.has(questionIndex);
 
-              return (
-                <QuestionCard
-                  key={questionIndex}
-                  questionIndex={questionIndex}
-                  primaryQuestion={question}
-                  totalQuestions={primaryQuestions.length}
-                  userName={userName}
-                  isComplete={isComplete}
-                  onComplete={handleQuestionComplete}
-                  onUpdate={handleQuestionUpdate}
-                />
-              );
-            })}
+            return (
+              <QuestionCard
+                key={questionIndex}
+                questionIndex={questionIndex}
+                primaryQuestion={question}
+                totalQuestions={primaryQuestions.length}
+                userName={userName}
+                isComplete={isComplete}
+                onComplete={handleQuestionComplete}
+                onUpdate={handleQuestionUpdate}
+              />
+            );
+          })}
 
-            {/* Email Input */}
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+          {/* Show article when ready */}
+          {interviewComplete && article && (
+            <ArticleDisplay
+              article={article}
+              emailSent={emailSent}
+              isLoading={isLoading}
+              isSendingEmail={isSendingEmail}
+              primaryQuestions={primaryQuestions}
+              questionSummaries={questionSummaries}
+              questionLoadingStates={questionLoadingStates}
+              userEditedSummaries={userEditedSummaries}
+              onRegenerateSummary={handleRegenerateSummary}
+              onSendEmail={handleSendEmail}
+              onStartOver={handleStartOver}
+            />
+          )}
+
+          {/* Email Input and Submit */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+            <div className="flex gap-3">
               <input
                 type="email"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 placeholder="Enter your email address..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={interviewComplete}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <button
+                onClick={handleSubmitEmail}
+                disabled={isSendingEmail || primaryQuestions.length === 0 || !primaryQuestions.every((_, idx) => completedQuestions.has(idx))}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {isSendingEmail ? 'Sending...' : emailSent ? 'Email Sent!' : 'Submit'}
+              </button>
             </div>
+            {primaryQuestions.length > 0 && !primaryQuestions.every((_, idx) => completedQuestions.has(idx)) && (
+              <p className="text-xs text-gray-500 mt-2">
+                Complete all questions to enable submit
+              </p>
+            )}
           </div>
-        ) : (
-          /* Article Display */
-          <ArticleDisplay
-            article={article}
-            emailSent={emailSent}
-            isLoading={isLoading}
-            isSendingEmail={isSendingEmail}
-            primaryQuestions={primaryQuestions}
-            questionSummaries={questionSummaries}
-            questionLoadingStates={questionLoadingStates}
-            userEditedSummaries={userEditedSummaries}
-            onRegenerateSummary={handleRegenerateSummary}
-            onSendEmail={handleSendEmail}
-            onStartOver={handleStartOver}
-          />
-        )}
+        </div>
       </div>
     </div>
   );

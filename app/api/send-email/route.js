@@ -30,6 +30,39 @@ export async function POST(request) {
       emailList.push(email.trim());
     }
 
+    // Validate required data
+    if (!conversationHistory || !Array.isArray(conversationHistory) || conversationHistory.length === 0) {
+      return NextResponse.json(
+        { error: 'conversationHistory is required and must be a non-empty array' },
+        { status: 400 }
+      );
+    }
+
+    // Validate conversation history structure
+    const invalidMessages = conversationHistory.filter(msg => !msg || !msg.role || !msg.content);
+    if (invalidMessages.length > 0) {
+      return NextResponse.json(
+        { error: 'conversationHistory contains invalid messages. Each message must have role and content properties.' },
+        { status: 400 }
+      );
+    }
+
+    // Validate summary (required when no error)
+    if (!error && (!summary || summary.trim() === '')) {
+      return NextResponse.json(
+        { error: 'summary is required when error is not provided' },
+        { status: 400 }
+      );
+    }
+
+    // Validate error (required when no summary)
+    if (error && (!error || error.trim() === '')) {
+      return NextResponse.json(
+        { error: 'error must be a non-empty string when provided' },
+        { status: 400 }
+      );
+    }
+
     sgMail.setApiKey(sendGridApiKey);
 
     // Log email configuration (without sensitive data)
