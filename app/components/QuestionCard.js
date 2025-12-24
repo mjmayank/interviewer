@@ -23,6 +23,7 @@ export default function QuestionCard({
   const [characterCount, setCharacterCount] = useState(0);
   const [editableSummary, setEditableSummary] = useState('');
   const [userEditedSummary, setUserEditedSummary] = useState('');
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   // Sync external completion state
   useEffect(() => {
@@ -36,8 +37,16 @@ export default function QuestionCard({
       setCharacterCount(0);
       setEditableSummary('');
       setUserEditedSummary('');
+      setIsSummaryExpanded(false);
     }
   }, [externalIsComplete, isComplete, primaryQuestion]);
+
+  // Auto-expand summary when question is complete
+  useEffect(() => {
+    if (isComplete && editableSummary) {
+      setIsSummaryExpanded(true);
+    }
+  }, [isComplete, editableSummary]);
 
   // Helper function to join answers with proper punctuation
   const joinAnswersWithPunctuation = useCallback((answers, separator = ' ') => {
@@ -154,18 +163,25 @@ export default function QuestionCard({
     setCharacterCount(newCharacterCount);
     setCurrentAnswerInput('');
 
+    // Update editable summary as soon as there's at least one answer
+    const answers = updatedPairsWithAnswer
+      .filter(pair => pair.answer)
+      .map(pair => pair.answer);
+    const allAnswers = joinAnswersWithPunctuation(answers, ' ');
+
+    // Only update editableSummary if it's empty or if user hasn't edited it
+    if (!editableSummary || editableSummary === userEditedSummary || editableSummary === joinAnswersWithPunctuation(
+      pairs.filter(pair => pair.answer).map(pair => pair.answer), ' '
+    )) {
+      setEditableSummary(allAnswers);
+    }
+
     if (shouldMarkComplete) {
       setIsComplete(true);
       setIsLoading(false);
       if (onComplete) {
         onComplete(questionIndex);
       }
-      // Concatenate all answers for editable summary
-      const answers = updatedPairsWithAnswer
-        .filter(pair => pair.answer)
-        .map(pair => pair.answer);
-      const allAnswers = joinAnswersWithPunctuation(answers, ' ');
-      setEditableSummary(allAnswers);
 
       if (onUpdate) {
         onUpdate(questionIndex, {
@@ -194,6 +210,7 @@ export default function QuestionCard({
           pairs: finalPairs,
           characterCount: newCharacterCount,
           isComplete: false,
+          userEditedSummary: userEditedSummary || allAnswers,
         });
       }
     } else {
@@ -202,13 +219,7 @@ export default function QuestionCard({
       if (onComplete) {
         onComplete(questionIndex);
       }
-      // Concatenate all answers for editable summary
-      const answers = updatedPairsWithAnswer
-        .filter(pair => pair.answer)
-        .map(pair => pair.answer);
-      const allAnswers = joinAnswersWithPunctuation(answers, ' ');
       const initialSummary = userEditedSummary || allAnswers;
-      setEditableSummary(initialSummary);
       if (!userEditedSummary) {
         setUserEditedSummary(allAnswers);
       }
@@ -239,9 +250,14 @@ export default function QuestionCard({
     const answers = pairs
       .filter(pair => pair.answer)
       .map(pair => pair.answer);
-    const allAnswers = joinAnswersWithPunctuation(answers, '\n\n');
+    const allAnswers = joinAnswersWithPunctuation(answers, ' ');
     const initialSummary = userEditedSummary || allAnswers;
-    setEditableSummary(initialSummary);
+    // Only update if editableSummary is empty or matches previous state
+    if (!editableSummary || editableSummary === userEditedSummary || editableSummary === joinAnswersWithPunctuation(
+      pairs.filter(pair => pair.answer).map(pair => pair.answer), ' '
+    )) {
+      setEditableSummary(allAnswers);
+    }
     if (!userEditedSummary) {
       setUserEditedSummary(allAnswers);
     }
@@ -254,7 +270,7 @@ export default function QuestionCard({
         userEditedSummary: initialSummary,
       });
     }
-  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount, userEditedSummary, joinAnswersWithPunctuation]);
+  }, [isLoading, activePair, onComplete, onUpdate, questionIndex, pairs, characterCount, userEditedSummary, editableSummary, joinAnswersWithPunctuation]);
 
   // Handle key press
   const handleKeyPress = useCallback((e) => {
@@ -269,24 +285,21 @@ export default function QuestionCard({
     setCurrentAnswerInput(e.target.value);
   }, []);
 
-  // Handle editable summary change
+  // Handle editable summary change - auto-update as user types
   const handleEditableSummaryChange = useCallback((e) => {
-    setEditableSummary(e.target.value);
-  }, []);
-
-  // Handle editable summary submission
-  const handleSubmitEditableSummary = useCallback(() => {
-    const summary = editableSummary.trim();
-    setUserEditedSummary(summary);
+    const newValue = e.target.value;
+    setEditableSummary(newValue);
+    setUserEditedSummary(newValue);
+    // Update parent component immediately
     if (onUpdate) {
       onUpdate(questionIndex, {
         pairs,
         characterCount,
-        isComplete: true,
-        userEditedSummary: summary,
+        isComplete: isComplete,
+        userEditedSummary: newValue,
       });
     }
-  }, [editableSummary, onUpdate, questionIndex, pairs, characterCount]);
+  }, [onUpdate, questionIndex, pairs, characterCount, isComplete]);
 
   return (
     <div
@@ -328,29 +341,43 @@ export default function QuestionCard({
         </div>
       )}
 
-      {/* Editable Summary Box - shown when question is complete */}
-      {isComplete && editableSummary && (
+      {/* Editable Summary Box - shown as soon as first answer is submitted */}
+      {editableSummary && (
         <div className="mt-6 pt-6 border-t border-gray-300">
-          <div className="mb-3">
-            <p className="text-sm font-medium text-gray-700 mb-2">Your Summary (Editable):</p>
-            <p className="text-xs text-gray-500 mb-3">
-              Review and edit your combined responses below. Click "Update Summary" to save your changes.
-            </p>
-          </div>
-          <textarea
-            value={editableSummary}
-            onChange={handleEditableSummaryChange}
-            placeholder="Your combined responses will appear here..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[150px]"
-          />
-          <div className="mt-3 flex justify-end">
-            <button
-              onClick={handleSubmitEditableSummary}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center space-x-2"
+          <button
+            onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+            className="w-full flex items-center justify-between text-left mb-3 hover:bg-gray-50 -mx-2 px-2 py-2 rounded transition-colors"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-700">Your Summary (Editable):</p>
+              {!isSummaryExpanded && (
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  {editableSummary.substring(0, 100)}{editableSummary.length > 100 ? '...' : ''}
+                </p>
+              )}
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-500 transition-transform ${isSummaryExpanded ? 'transform rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <span>Update Summary</span>
-            </button>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {isSummaryExpanded && (
+            <>
+              <p className="text-xs text-gray-500 mb-3">
+                Review and edit your combined responses below. Changes are saved automatically as you type.
+              </p>
+              <textarea
+                value={editableSummary}
+                onChange={handleEditableSummaryChange}
+                placeholder="Your combined responses will appear here..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[150px]"
+              />
+            </>
+          )}
         </div>
       )}
     </div>
