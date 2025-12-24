@@ -104,16 +104,41 @@ export default function SurveyPage() {
     }
   };
 
-  // Build conversation history from questionHistories for email
+  // Build conversation history from all questions for email (including incomplete ones)
   const buildConversationHistoryForEmail = useCallback(() => {
     const allHistory = [];
-    questionHistories.forEach(({ conversationHistory }) => {
-      if (conversationHistory && Array.isArray(conversationHistory)) {
-        allHistory.push(...conversationHistory);
+
+    // Build history for all questions, including incomplete ones
+    for (let i = 0; i < primaryQuestions.length; i++) {
+      const state = questionStates[i];
+      const primaryQuestion = primaryQuestions[i];
+
+      // Always include the primary question
+      allHistory.push({ role: 'assistant', content: primaryQuestion });
+
+      // Include answer if available, otherwise use empty string
+      if (state?.pairs && state.pairs.length > 0) {
+        // Get all answers from pairs
+        const answers = state.pairs
+          .filter(pair => pair.answer)
+          .map(pair => pair.answer);
+
+        if (answers.length > 0) {
+          // Join answers with spaces
+          const combinedAnswer = answers.join(' ');
+          allHistory.push({ role: 'user', content: combinedAnswer });
+        } else {
+          // No answer provided, use empty string
+          allHistory.push({ role: 'user', content: '' });
+        }
+      } else {
+        // No state or pairs, use empty string
+        allHistory.push({ role: 'user', content: '' });
       }
-    });
+    }
+
     return allHistory;
-  }, [questionHistories]);
+  }, [primaryQuestions, questionStates]);
 
   // Wrapper for handleSendEmail that includes conversation history
   const handleSubmitEmail = useCallback(() => {
@@ -180,17 +205,12 @@ export default function SurveyPage() {
               />
               <button
                 onClick={handleSubmitEmail}
-                disabled={isSendingEmail || primaryQuestions.length === 0 || !primaryQuestions.every((_, idx) => completedQuestions.has(idx))}
+                disabled={isSendingEmail || primaryQuestions.length === 0}
                 className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 {isSendingEmail ? 'Sending...' : emailSent ? 'Email Sent!' : 'Submit'}
               </button>
             </div>
-            {primaryQuestions.length > 0 && !primaryQuestions.every((_, idx) => completedQuestions.has(idx)) && (
-              <p className="text-xs text-gray-500 mt-2">
-                Complete all questions to enable submit
-              </p>
-            )}
           </div>
         </div>
       </div>

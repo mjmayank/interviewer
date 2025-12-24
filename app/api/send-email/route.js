@@ -39,18 +39,25 @@ export async function POST(request) {
     }
 
     // Validate conversation history structure
-    const invalidMessages = conversationHistory.filter(msg => !msg || !msg.role || !msg.content);
+    // Allow empty strings for content (for incomplete questions), but require the property to exist
+    const invalidMessages = conversationHistory.filter(msg =>
+      !msg ||
+      !msg.role ||
+      msg.content === undefined ||
+      msg.content === null
+    );
     if (invalidMessages.length > 0) {
       return NextResponse.json(
-        { error: 'conversationHistory contains invalid messages. Each message must have role and content properties.' },
+        { error: 'conversationHistory contains invalid messages. Each message must have role and content properties (content can be empty string).' },
         { status: 400 }
       );
     }
 
-    // Validate summary (required when no error)
-    if (!error && (!summary || summary.trim() === '')) {
+    // Validate summary (allow empty string for incomplete submissions)
+    // Summary can be empty if questions aren't complete yet
+    if (!error && summary === undefined) {
       return NextResponse.json(
-        { error: 'summary is required when error is not provided' },
+        { error: 'summary is required (can be empty string for incomplete submissions)' },
         { status: 400 }
       );
     }
